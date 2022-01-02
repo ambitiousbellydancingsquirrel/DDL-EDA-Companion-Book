@@ -2,14 +2,18 @@
 title: "DDL Companion Book 1 | Coronavirus"
 author: "Pushkar Sarkar"
 date: "02/01/2022"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Libraries
+## Let's Begin!
+
+### libraries & data
 
 Let's bring tidyverse into RStudio.
 
@@ -18,4 +22,447 @@ Let's bring tidyverse into RStudio.
 library(tidyverse)
 ```
 
-To access the data, we'll also need a package called coronavirus
+To access the data, we'll also need a package called coronavirus. 
+
+```{r, eval=FALSE}
+install.packages("coronavirus")
+library(coronavirus)
+```
+```{r include=FALSE}
+library(coronavirus)
+```
+
+The coronavirus package was created by Rami Krispin. It contains regularly updated information on coronavirus cases and vaccinations in every country. The raw data is being pulled from the Johns Hopkins University Center for Systems Science and Engineering (JHU CCSE) Coronavirus repository. 
+
+There are many other resources for coronavirus data. You can check out a few of them at <https://help.bing.microsoft.com/#apex/18/en-us/10024>.
+
+Spend a few minutes reading about the dataset at <https://github.com/RamiKrispin/coronavirus> (scroll down to see the information). There are also many examples of visualisations you can do.
+
+### the coronavirus dataset
+
+Let's take a look at our data.
+
+```{r, eval=FALSE}
+coronavirus 
+```
+This is huge. We need to convert this to a tibble so that we can view it comfortably.
+
+```{r}
+coronavirus <- coronavirus %>% as_tibble()
+coronavirus
+```
+
+There's a lot of information! 
+
+### let's clean this up a little
+
+Looking at the variables (or columns), we can see that a few are redundant. We don't need uid, iso2, iso3, code3, combined_key: they're all just country codes. We can also remove continent_name and continent_code: let's focus our analysis on countries. We can get rid of the latitude and longitude as well, since those are simply map coordinates.
+
+Let's select the others: date, province, country, type, cases and population. 
+The select() function from dplyr allows us to <i>select</i> columns that we want, dropping the others.
+
+```{r}
+coronavirus %>% 
+  select(c("date","province","country", "type", 
+           "cases", "population"))
+
+
+```
+
+We also need to assign this back to the coronavirus dataset! Otherwise R will forget what we've done and it'll revert to the original with the extra columns.
+
+```{r}
+coronavirus <- coronavirus %>% 
+  select(c("date","province","country", "type", 
+           "cases", "population"))
+
+coronavirus
+```
+
+We gave select() a set of columns which it kept, and the rest were removed.
+
+Now that we've cleared out the columns we don't need, let's dive into the data. How many countries do we have in this dataset? 
+
+```{r}
+coronavirus %>% count(country)
+```
+
+Looks like we have 195 countries! The n column is the number of entries we have of that particular country. So Afghanistan comes up 1,893 times in this data. Presumably one entry for each day...but how could that be? The pandemic hasn't been going on for 1,893 days.
+
+### we need to understand the data
+
+Let's just isolate Afghanistan for now and see what's happening.
+
+```{r}
+coronavirus %>% 
+  filter(country == "Afghanistan")
+
+```
+
+From the date column, it looks like there really is only one entry a day. But that's just not possible!
+
+Let's view Afghanistan in detail.
+
+```{r}
+coronavirus %>% 
+  filter(country == "Afghanistan") %>% 
+  view()
+```
+
+As we scroll down, we now see what's happened. Afghanistan has daily entries for confirmed cases, deaths and recoveries. Presumably three entries are made every day in the John Hopkins database, which is why the total number of rows is 1,893.
+
+Good to know. So we have three mini-datasets inside one.
+
+Before we carry on, there are a couple of small things we need to do.
+
+First, it looks like Afghanistan has no entries in the province column. We should get rid of it using select. Second, we don't want to keep filtering the original data over and over. So let's make a nice new tibble and call it "afghanistan".
+
+```{r}
+afghanistan <- coronavirus %>% 
+  filter(country == "Afghanistan") %>% 
+  select(-province)
+
+afghanistan
+```
+
+This time we added a minus sign inside select, so it <i>removed</i> that column and kept the rest. This is a handy tip! 
+
+So now we have a neat and tidy dataset that we understand. We have the country (which is now an irrelevant variable since we only have Afghanistan), the type of entry (confirmed, deaths, recoveries), and we have cases, which gives us the number of confirmed cases, deaths and recoveries, depending on the entry.
+
+Let's get a count of how many confirmed cases, deaths and recoveries we have.
+
+```{r}
+afghanistan %>%
+  group_by(type) %>% 
+  summarise(total = sum(cases))
+```
+
+That's weird--recoveries are a total of 0. Why would this be?
+
+Either every single value is 0, which means that recoveries were just not tracked for Afghanistan, or the sum of all the values becomes zero. Either way, to find out what's going on, we'll have to manually dive into the data
+
+We can view() and scroll through to see the data in detail, but let's make it a little easier and filter first.
+
+```{r}
+afghanistan %>% 
+  filter(type == "recovery") %>% 
+  view()
+
+
+```
+
+Looks like they're all zeros. Fair enough--we can move on.
+
+What was the single highest day of confirmed cases and deaths for Afghanistan? Let's get the highest number of cases by type. 
+
+```{r}
+afghanistan %>% 
+  group_by(type) %>% 
+  summarise(highest = max(cases))
+
+```
+
+That's weird again! Recoveries were supposed to be all zeros! Let's look at the data again.
+
+```{r}
+afghanistan %>% 
+  filter(type == "recovery") %>% 
+  view()
+
+
+```
+
+And this time, let's scroll down and see what's happening. 
+
+As it turns out, recoveries were tracked after all...at least upto 2021-07-13, after which they weren't. And the reason for the zero also becomes clear--on 2021-08-05, someone entered -82586 recoveries.
+
+And now we <i>really</i> know our data well.
+
+We know that provinces aren't recorded for every country, we know that there is a date past which cases may not be recorded and we also know that someone has, for some reason, entered negative numbers so as to effectively reset the total cases.
+
+But how do we go about this now?
+
+We saw just one negative entry, but logically, cases/deaths/recoveries can't possibly be less than zero. It has to be either positive or zero. So obviously we need to either get rid of all the negative entries. Once again, we can use filter to keep only positive entries and zeroes.
+
+```{r}
+afghanistan <- afghanistan %>% 
+  filter(cases >= 0) 
+```
+
+Now let's redo our earlier analysis for the total cases.
+
+```{r}
+afghanistan %>% 
+  group_by(type) %>% 
+  summarise(total = sum(cases))
+```
+Great! So now we know how many cases, deaths and recoveries Afghanistan has recorded throughout the pandemic, and how many cases and deaths they had on their worst day.
+
+### time to plot stuff
+
+Let's plot their cases by day.
+
+```{r}
+afghanistan %>% 
+  ggplot(aes(date, cases)) + 
+  geom_line()
+```
+
+We've forgotten to do one crucial thing! We forgot to split up our data into confirmed, deaths and recoveries! So now its just showing us <i>all entries</i>, regardless of what type of case they are.
+
+We'll need to redo this graph.
+
+Let's split the line into three lines on the basis of colour.
+
+```{r}
+afghanistan %>% 
+  ggplot(aes(date, cases)) + 
+  geom_line(aes(col = type))
+```
+
+When giving our geom a colour based on a variable (which is what we've done), ggplot2 objects will automatically create separate lines or bars or points for each cagetory. Remember to put it inside aes().
+
+
+We see a drop to zero in recoveries somewhere after July 2021. That must be where the data on recoveries stopped getting recorded.
+
+Spend some time analysing this plot.
+
+Can you make a prediction what Afghanistan's recoveries would be after it stopped getting recorded? How high do you think they would go on a single day? What would the curve look like?
+
+Finally, let's clean and label this plot. 
+
+```{r}
+
+# Finding the earliest and latest dates for our caption
+
+afghanistan %>% 
+  summarise(earliestdate = min(date), 
+            latestdate = max(date))
+
+# ggthemes has a collection of nice themes & color scales
+
+library(ggthemes)
+
+afghanistan %>% 
+  ggplot(aes(date, cases)) + 
+  geom_line(aes(col = type)) + 
+  labs(title = "Coronavirus Cases in Afghanistan",
+       subtitle = "22nd Jan 2020 - 13th Oct 2021",
+       caption = "Data obtained from the coronavirus R package") + 
+  theme_solarized() +
+  scale_color_solarized()
+
+```
+
+### exercise
+
+Choose another country and create the same plot!
+
+\
+
+### comparing the world
+
+Let's zoom out of Afghanistan and move back to our original dataset.
+
+```{r}
+coronavirus
+
+```
+
+Which continents had the most cases? 
+
+We can't find out because we got rid of the continent information earlier! This is a huge mistake. There's no way to fix it now. We'll have to start by bringing in the original dataset again. 
+
+The data() function lets us pull out the original data from a package and creates a new data frame. 
+
+```{r}
+data("coronavirus")
+
+```
+If we look at our Environment window, we see that the original coronavirus dataset is indeed back, with 500,000+ observations and 15 variables.
+
+This time, let's call this coronavirus_original or coronavirus_raw. And we should make it a tibble too, like last time.
+
+```{r}
+coronavirus_raw <- as_tibble(coronavirus)
+
+coronavirus_raw
+
+```
+
+So let's once again get rid of everything we don't need. Since we are only comparing continents, let's keep just the date, type, cases and continent_name.
+
+```{r}
+corona_continent <- coronavirus_raw %>% 
+  select(c("date", "type",
+           "cases","continent_name"))
+
+corona_continent
+
+```
+
+So what does a line graph of confirmed cases look like per continent?
+
+```{r}
+
+corona_continent %>% 
+  filter(type == "confirmed") %>% 
+  ggplot(aes(date, cases)) + 
+  geom_line()
+
+```
+
+Immediately we run into several issues. It's obviously not a line - it's all filled up. But we'll come to that soon.
+
+### problem solving
+
+First of all, to remove the scientific notation, we need to run a special function.
+
+```{r}
+options(scipen = 999)
+
+corona_continent %>% 
+  filter(type == "confirmed") %>% 
+  ggplot(aes(date, cases)) + 
+  geom_line()
+
+```
+
+Next, we need to get rid of these huge lines. As with Afghanistan, there seem to be other negative entries. There's also one enormous positive value. It's over 500,000, so we can use that as our criteria for filtering.
+
+```{r}
+corona_continent %>% 
+  filter(type == "confirmed",
+         cases >= 0,
+         cases <= 500000) %>% 
+  ggplot(aes(date, cases)) + 
+  geom_line()
+```
+
+And now let's use color to split the lines.
+
+
+```{r}
+corona_continent %>% 
+  filter(type == "confirmed",
+         cases >= 0,
+         cases <= 500000) %>% 
+  ggplot(aes(date, cases)) + 
+  geom_line(aes(col = continent_name))
+```
+
+Excellent! But why isn't it a line? Why is it filled in? 
+
+The only way a line could appear filled in is if there's <i>so much data</i> that the entire plot is filled with lines. That's what's happening. Although we are colouring by continent, we still have <i>each country's individual data</i> being shown here.
+
+We have the daily cases for Afghanistan and the daily cases for all the other Asian countries, but we don't have the total daily cases for <i>Asia</i>. 
+
+What we need is a <i>single</i> row for Asia on a particular date for a particular type. This is tough to fix.
+
+But group_by() works well here. We can group the data by continent_name first, date and type. 
+
+With our data arranged in the way we want it, we now use summarise() to give us the sum of all the cases.
+
+
+```{r}
+corona_continent_fixed <- corona_continent %>% 
+  filter(type == "confirmed",
+         cases >= 0,
+         cases <= 500000) %>% 
+  group_by(continent_name, date, type) %>% 
+  summarise(cases = sum(cases)) 
+
+corona_continent_fixed
+
+```
+
+What's happened is that based on our group_by(), now each row has <i>continent_name<i>, <i>date</i> and <i>type</i>, and then the sum of the number of cases that matched those criteria in the previous data. So all the cases of a particular type of a particular continent on a particular day got added up.
+
+And now let's plot!
+
+```{r}
+corona_continent_fixed %>% 
+  ggplot(aes(date, cases)) + 
+  geom_line(aes(col = continent_name))
+
+```
+
+For our final cleanup, it looks like we need to drop the NA values.
+
+```{r}
+corona_continent_fixed %>% 
+  filter(is.na(continent_name))
+
+
+```
+
+There are 631. That's quite a high total considering we have around 4,500 in total.
+
+```{r}
+corona_continent_fixed <- corona_continent_fixed %>% 
+  filter(!is.na(continent_name))
+
+```
+Now we have everything that is <i>NOT</i> an NA in continent_name.
+
+Ok let's plot, label and beautify!
+
+```{r}
+
+# Finding the earliest and latest dates for our caption
+
+corona_continent_fixed %>% 
+  as_tibble() %>% 
+  summarise(earliestdate = min(date),
+            latestdate = max(date))
+
+# ggtea is a small package with several fun themes & palettes
+
+library(ggtea)
+
+corona_continent_fixed %>% 
+  ggplot(aes(date, cases)) + 
+  geom_line(aes(col = continent_name)) + 
+  labs(title = "Daily Coronavirus Confirmed Cases For All Continents",
+       subtitle = "22nd Jan 2020 - 13th Oct 2021",
+       caption = "Data obtained from the coronavirus R package") + 
+  theme_herbal() + 
+  scale_color_herbal_d()
+
+```
+
+### but wait!
+
+We're not done with this dataset yet. There's no point in leaving data unexplored, so let's revisit those NA continents. Thankfully, this time, we have coronavirus_raw.
+
+So let's bring in only the NA values from continent_name.
+
+```{r}
+coronavirus_raw %>% 
+  filter(is.na(continent_name))
+```
+
+And that's interesting - the country is Canada (there could be more) and the province is Repatriated Travellers (there could be more). So this is why continent_name was NA. These were stats on Canadians abroad.
+
+Let's do a quick group_by() and summarise() to find out how many of what we have.
+
+```{r}
+coronavirus_raw %>% 
+  filter(is.na(continent_name)) %>% 
+  group_by(country, province) %>% 
+  summarise(n = n())
+```
+
+With the help of Google, we can solve the mystery of the NA values in continent_name, and thus satisfactorily close this chapter of our data analytics journey.
+
+
+
+\
+\
+\
+\
+\
+\
+\
+\
+\
