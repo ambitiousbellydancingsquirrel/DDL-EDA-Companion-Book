@@ -1,0 +1,21 @@
+---
+title: "DDL Companion Book 1 | Coronavirus"
+author: "Pushkar Sarkar"
+date: "02/01/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+
+Let's bring tidyverse into RStudio.
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+To access the data, we'll also need a package called coronavirus
