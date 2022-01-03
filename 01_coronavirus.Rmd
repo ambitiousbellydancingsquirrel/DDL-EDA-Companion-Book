@@ -3,8 +3,8 @@ title: "DDL Companion Book 1 | Coronavirus"
 author: "Pushkar Sarkar"
 date: "02/01/2022"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ### libraries & data
 
-Let's bring tidyverse into RStudio.
+Let's bring the tidyverse into RStudio.
 
 
 ```{r, message=FALSE, warning=FALSE}

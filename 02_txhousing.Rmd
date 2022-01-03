@@ -1,0 +1,232 @@
+---
+title: "DDL Companion Book 2 | Texas Housing"
+author: "Pushkar Sarkar"
+date: "03/01/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Let's Begin!
+
+### libraries & data
+
+Let's bring the tidyverse into RStudio.
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+Along with ggplot2 comes an interesting dataset called txhousing.
+
+```{r}
+data(txhousing)
+txhousing %>% view()
+```
+
+This dataset contains information about the housing market in Texas, USA. The data originally comes from the Texas Real Estate Research Center. 
+
+Let's read more about the dataset and what it contains.
+
+```{r, eval=FALSE}
+?txhousing
+
+```
+
+So we have three key types of information: the city, which is categorical, the date, and different sales and listings information, which are all numerical.
+
+How large is our dataset? It's 8,592 rows long and 9 columns wide.
+
+Since we have date information, let's see how long our dataset spans.
+
+```{r}
+txhousing %>% 
+  summarise(min = min(date),
+            max = max(date))
+```
+
+So we have information from 2000 to 2015. 
+
+Notice that the date is formatted weirdly. Look at it carefully using view(). It doesn't give us information on the date, only the year and month in a weird combined form. Let's not change anything just yet, but we should keep note of this.
+
+Also, the year and month are considered integers (int) by R. R, of course, has its own date and time format, so again, we won't change anything just yet, but we should keep note.
+
+Let's do a quick plot to see how some of the sales and listing data has changed over time. Since we have data from numerous cities for the same year and month, we'll have to figure out a way to collapse/combine them into one, so that we have one final number for a particular year and month. 
+
+```{r, message = FALSE}
+txeda <- txhousing %>% 
+  group_by(year, month) %>% 
+  summarise(sales = mean(sales),
+            volume = mean(volume),
+            median = mean(median),
+            listings = mean(listings),
+            inventory = mean(inventory))
+
+txeda
+  
+```
+
+This is a disaster! We're getting NA values for the summary statistics probably because there are NA values in the original data. Some cities, for example, might not have information for the year 2000, which ruined our summary. Lucky that we saved our original data as txhousing and this new one as txeda. 
+
+Here's a quick fix:
+
+```{r, message = FALSE}
+txeda <- txhousing %>% 
+  group_by(year, month) %>% 
+  summarise(sales = mean(sales, na.rm = TRUE),
+            volume = mean(volume, na.rm = TRUE),
+            median = mean(median, na.rm = TRUE),
+            listings = mean(listings, na.rm = TRUE),
+            inventory = mean(inventory, na.rm = TRUE))
+
+txeda
+```
+
+Inside our mean(), we can put na.rm, which tells R to remove NA values from its calculation. If we don't add it, it's FALSE by default, which means don't remove NA values. So we specify it to be TRUE.
+
+And now we can plot:
+
+```{r}
+txeda %>% 
+  ggplot(aes(year, sales)) + 
+  geom_line()
+
+txeda %>% 
+  ggplot(aes(month, sales)) + 
+  geom_line()
+```
+
+Immediately we run into an issue--what should we put on the x-axis? Putting individually was never going to work, and we can see what happens if we try. 
+
+We have the year and the month in separate columns, but we need them combined in one column. That's what the original date variable was! Some smart person put it there for our benefit. Let's rebuild txeda from txhousing and add date as well.
+
+```{r}
+txeda <- txhousing %>% 
+  group_by(year, month) %>% 
+  summarise(sales = mean(sales, na.rm = TRUE),
+            volume = mean(volume, na.rm = TRUE),
+            median = mean(median, na.rm = TRUE),
+            listings = mean(listings, na.rm = TRUE),
+            inventory = mean(inventory, na.rm = TRUE),
+            date = mean(date))
+
+# Obviously every single date value within the same month and year will be the same
+# So taking its mean is also going to give us the same value
+
+txeda %>% 
+  ggplot(aes(date, sales)) + 
+  geom_line()
+```
+
+Perfect! It actually looks somewhat like our initial botched version above. Of course it would, since ultimately they reflect the same data and the data doesn't lie! 
+
+As we can see, this is clearly a highly seasonal dataset. Nobody buys houses in the winter. Also, there seems to have been a strong downward shift in the overall trend around 2007-08. What could that be?
+
+Let's dive into the seasonal data in detail, but add a little extra something. 
+
+```{r}
+txeda %>% 
+  ggplot(aes(month, sales)) + 
+  # We already know that this is going to fail, because we have all the months from
+  # 2000 to 2015. So let's split this into 15 individual lines, one per year.
+  geom_line(aes(col = year))
+```
+
+Another butchered graph. Why isn't it splitting the lines properly? For whatever reason, geom_line() is not able to group the data by year.
+
+
+```{r}
+txeda
+```
+
+The year is recorded as an integer. R understands categories as factors. That's probably why it didn't work (although we never know until we try).
+
+There is an argument for geom_line() that specifies how it should <i>group</i> the data. 
+
+```{r}
+txeda %>% 
+  ggplot(aes(month, sales)) + 
+  geom_line(aes(col = year, group = year))
+
+```
+
+Much better. The group argument forces geom_line() to group according to a variable. But notice how the colors aren't categorical. They're a gradient.
+
+Let's fix the dataset itself.
+
+```{r}
+txeda <- txeda %>% 
+  mutate(year = as.factor(year))
+
+txeda %>% 
+  ggplot(aes(month, sales)) + 
+  geom_line(aes(col = year, group = year))
+```
+
+And there we go! Clearly sales peak in June and drop to a low in January, and this is something we see every year.
+
+Now the year is no longer a number--its a category. But if we look carefully, we see the same thing happening on the x-axis. Since month is also an integer, it's not giving us the correct labels.
+
+Let's quickly fix that, and then beautify and label the plot!
+
+```{r}
+txeda %>% 
+  mutate(month = as.factor(month)) %>% 
+  ggplot(aes(month, sales)) + 
+  geom_line(aes(col = year, group = year), size = 1) + 
+  labs(title = "Monthly Housing Prices in Texas",
+       subtitle = "From 2000-2015",
+       captions = "Data obtained from the ggplot2 dataset, courtesy of TAMU") + 
+  theme_minimal() + 
+  scale_color_viridis_d()
+
+```
+
+### don't leave the data unexplored
+
+Remember those NA values we omitted right at the start? We used na.rm to quickly bypass that, but we should dig in and figure out what those NAs are exactly - where and why are they in our data?
+
+This is a fast method that, for once, doesn't use dplyr to find out.
+
+```{r}
+colSums(is.na(txhousing))
+```
+```{r}
+txhousing %>% summary()
+```
+
+Using R's base summary() function also gives us the NA counts, along with many more things.
+
+Keep in mind that our dataset is 8,592 rows long, so 568 missing NA values would be...
+
+```{r}
+568/8952
+```
+
+...6.3% of our data.
+
+That's quite small, but not necessarily insignificant. There are more NAs in other columns, and it remains to be seen whether these NAs have something to do with each other.
+
+It's time for some manual work: let's isolate the NAs in sales first, and see what's going on.
+
+```{r}
+txhousing %>% 
+  filter(is.na(sales)) %>% 
+  view()
+```
+
+And to nobody's surprise, it looks like there are several cities which just don't have any information in them for certain years. That explains not only the sales NA values, but the volume and median NAs as well, and at least some of the listings and median NAs.
+
+In this case, dropping a few years off a few cities is not the most harmful thing to our overall inference--it won't change the monthly trend or the overall dip in the market during the 2008 recession--so we can feel reasonably safe in using na.rm. 
+
+But just to be sure, we should check somehow. What ways are there of intuitively or statistically confirming that (at least to some reasonable degree of confidence), there shouldn't be too much harm caused in directly dropping the NA values?
+
+
+
+
+
