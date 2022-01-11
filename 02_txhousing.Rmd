@@ -101,7 +101,7 @@ txeda %>%
   geom_line()
 ```
 
-Immediately we run into an issue--what should we put on the x-axis? Putting individually was never going to work, and we can see what happens if we try. 
+Immediately we run into an issue--what should we put on the x-axis? Putting year and month individually was never going to work, and we can see what happens if we try. 
 
 We have the year and the month in separate columns, but we need them combined in one column. That's what the original date variable was! Some smart person put it there for our benefit. Let's rebuild txeda from txhousing and add date as well.
 
@@ -137,7 +137,7 @@ txeda %>%
   geom_line(aes(col = year))
 ```
 
-Another butchered graph. Why isn't it splitting the lines properly? For whatever reason, geom_line() is not able to group the data by year.
+Another butchered graph. Why isn't it splitting the lines properly? For whatever reason, geom_line() is not able to group the data by year. Let's go back to our dataset and see what's happening.
 
 
 ```{r}
@@ -155,9 +155,9 @@ txeda %>%
 
 ```
 
-Much better. The group argument forces geom_line() to group according to a variable. But notice how the colors aren't categorical. They're a gradient.
+Much better. The group argument forces geom_line() to group according to a variable. But notice how the colors aren't categorical. They're a gradient. R uses gradients by default for numbers and colors for categories.
 
-Let's fix the dataset itself.
+So now let's fix the dataset itself.
 
 ```{r}
 txeda <- txeda %>% 
@@ -168,7 +168,7 @@ txeda %>%
   geom_line(aes(col = year, group = year))
 ```
 
-And there we go! Clearly sales peak in June and drop to a low in January, and this is something we see every year.
+And there we go! Clearly sales peak in June and drop to a low in January, and this is something we see every year. 
 
 Now the year is no longer a number--its a category. But if we look carefully, we see the same thing happening on the x-axis. Since month is also an integer, it's not giving us the correct labels.
 
@@ -220,13 +220,103 @@ txhousing %>%
   view()
 ```
 
-And to nobody's surprise, it looks like there are several cities which just don't have any information in them for certain years. That explains not only the sales NA values, but the volume and median NAs as well, and at least some of the listings and median NAs.
+It looks like there are several cities which just don't have any information in them for certain years. That explains not only the sales NA values, but the volume and median NAs as well, and at least some of the listings and median NAs.
 
-In this case, dropping a few years off a few cities is not the most harmful thing to our overall inference--it won't change the monthly trend or the overall dip in the market during the 2008 recession--so we can feel reasonably safe in using na.rm. 
-
-But just to be sure, we should check somehow. What ways are there of intuitively or statistically confirming that (at least to some reasonable degree of confidence), there shouldn't be too much harm caused in directly dropping the NA values?
+In this case, dropping a few years off a few cities is probably not the most harmful thing to our overall inference--it won't change the monthly trend or the overall dip in the market during the 2008 recession--so we can feel reasonably safe in using na.rm. 
 
 
+### checking out the other columns
+
+Let's now move to the other four variables we have: volume, median, listings and inventory. We already have our dataset--txeda--which has yearly averages for the four variables, so we can quickly go ahead and get plotting.
+
+```{r, fig.dim= c(4,2)}
+txeda %>% 
+  ggplot(aes(date, volume)) + geom_line()
+
+txeda %>% 
+  ggplot(aes(date, median)) + geom_line()
+
+txeda %>% 
+  ggplot(aes(date, listings)) + geom_line()
+
+txeda %>% 
+  ggplot(aes(date, inventory)) + geom_line()
+
+
+```
+
+This is interesting. All of them follow what seems to be the seasonal trend we discovered earlier, but over the years, none of the graphs show the same pattern. 
+
+The trend in volume matches the trend we saw earlier in sales, which is pretty obvious--if the number of sales goes up or down, so would the volume.
+
+The median sale price, on the other hand, doesn't go down. There seems to be a slight stalling around the time of the global financial crisis, but even that hasn't managed to shift its trajectory much--its just been shooting up since the year 2000. 
+
+So while sales may go up and down, the <i>intrinsic value</i> of the properties in the housing market seem to be rising year on year. They don't depreciate in value. Why do you think that is? Is it just a property of real estate markets everywhere?
+
+The total active listings dropped right before the crisis hit and seemingly hasn't recovered in the years since. There was a slight revival in 2010, after the crisis had subsided, but by 2015 it had tanked to below 2000 levels. 
+
+The inventory is an interesting statistic--since it measures the time taken to sell off all listings at the current pace of sales, that means that if sales rise while listings remain constant, inventory will decrease. Inventory is then not a an "actual" variable--its a representation of the information collected in two other variables. Inventory seems to have been on a slight downward trend up until the crisis, at which point it shot up, and then subsequently went straight back down. What are the reasons for this particular trendline for inventory?
+
+### trendlines
+
+We may know the answers the questions above, but we should make things as clear as possible for the people we present it to. Let's finish the plots above by adding trendlines.
+
+Apart from geom_line(), there is another line function called geom_smooth(). It adds trendlines, and you can do it with not just lines, but on top of scatterplots too!
+
+Let's take the plot above for inventory and add a trendline to it.
+
+```{r}
+txeda %>% 
+  ggplot(aes(date, inventory)) + 
+  geom_line() + 
+  geom_smooth()
+```
+
+We can remove the grey area (which shows us the error margin of the trendline) using the se argument inside geom_smooth().
+
+```{r}
+txeda %>% 
+  ggplot(aes(date, inventory)) + 
+  geom_line() + 
+  geom_smooth(se = FALSE)
+```
+
+Finally, let's label and beautify the plot!
+
+We'll use ggthemr, a package of themes and color palettes similar to ggtea. Read about it at <https://github.com/Mikata-Project/ggthemr>. It has several interesting themes and adjustments you can make, based on your preferences. Like ggtea, it's not on the CRAN repository, so it needs to be installed from GitHub.
+
+
+```{r, eval=FALSE}
+
+# Install devtools if not already installed
+install.packages("devtools")
+devtools::install_github('Mikata-Project/ggthemr')
+```
+
+```{r}
+
+library(ggthemr)
+
+ggthemr('light', type = 'outer')
+
+txeda %>% 
+  ggplot(aes(date, inventory)) + 
+  geom_line() + 
+  geom_smooth(lty = 2, se = FALSE) + 
+  labs(title = "Texas Real Estate Inventory Listings | 2000 - 2015",
+       subtitle = "*Inventory = time(months) to sell all listings at current sales pace",
+       caption = "Data from the TAMU real estate center.", 
+       x = "Year",
+       y = "Inventory")
+
+
+```
+
+Wonderful! With that, we come to the close of this chapter of our data analytics and visualisation journey. 
+
+But the dataset is large and there are many secrets it has yet to tell. Do different cities have different sales? Which cities have the highest sales volume--both overall and during particular years? Which parts of Texas that suffered worse than others during the crisis? 
+
+Ultimately, the more we know, the more we know how little we know. 
 
 
 

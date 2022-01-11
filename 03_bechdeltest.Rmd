@@ -1,0 +1,279 @@
+---
+title: "DDL Companion Book 2 | The Bechdel Test"
+author: "Pushkar Sarkar"
+date: "03/01/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Let's Begin!
+
+### libraries & data
+
+Let's bring the tidyverse into RStudio.
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+The data comes from the tidytuesday collection of data.
+
+```{r, messages = FALSE}
+movies <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-03-09/movies.csv')
+movies
+
+```
+
+To understand the data better, we're going to have to understand the Bechdel Test. It's a simple test that asks the following question: in a movie (or any work of fiction), is there at least one conversation between two women about something other than a man?
+
+To pass the test, a movie has to check three criteria:
+
+1. The movie has more than one female character.
+2. Two or more women talk to each other.
+3. They talk about something besides a man.
+
+Read about the dataset and the variables at <https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-03-09/readme.md>.
+
+Let's take a quick look at the data.
+
+```{r}
+movies %>% view()
+```
+
+There are a lot of columns! Many of them also have what we call unstructured data--things we can't really do any data work with. The posters column, for example, has a bunch of links to posters. We can't really do much with that, so lets drop it.
+
+In fact, there are so many that we'd want to remove, that we should instead think of what we want to keep.
+
+Let's keep the following: year, title, clean_test, binary, budget, domgross, intgross, metascore, imdb_rating
+
+```{r}
+bechdel <- movies %>% 
+  select(c("year", "title", "clean_test", 
+           "binary", "budget", "domgross", 
+           "intgross", "metascore", "imdb_rating"))
+
+bechdel
+
+```
+
+There are a few NA values, so let's remove them. We could do it using filter(), but if we just want to quickly remove <i>all</i> the NAs without thinking too much, we can use na.omit() instead, which is the fastest way.
+
+```{r}
+bechdel1 <- bechdel %>% 
+  na.omit()
+```
+
+So now we have a simplified clean dataset with essentially three things: the movie, their Bechdel Test results, and their performance metrics (how much they grossed and how well they were rated).
+
+Let's start with a simple question--do movies that pass the Bechdel Test make more money?
+
+```{r, eval=FALSE}
+bechdel1 %>% 
+  ggplot() + 
+  geom_histogram(aes(intgross, fill = binary)) 
+  
+```
+
+We get some type of variable error. Looking at the dataset, we see that domgross, intgross, and in fact many other variables are counted as characters (chr). Some should be factors and some should be numeric. Let's fix those.
+
+```{r}
+bechdel1 <- bechdel1 %>% 
+  mutate(clean_test = as.factor(clean_test),
+         binary = as.factor(binary),
+         domgross = as.numeric(domgross),
+         intgross = as.numeric(intgross))
+
+```
+
+A warning tells us that we have some new NAs. We can understand quite a few things here: these NAs popped up because they <i>could not</i> be converted into numbers. Which means they were, presumably, characters. Maybe someone wrote "ten thousand" instead of "10000". This also explains why the entire column was recorded as a character variable by R in the first place.
+
+```{r}
+bechdel1 <- bechdel1 %>% na.omit()
+
+```
+
+Now let's plot!
+
+```{r}
+bechdel1 %>% 
+  ggplot() + 
+  geom_histogram(aes(intgross, fill = binary)) 
+```
+
+This doesn't necessarily tell us which of the two performed better in the theatres. But it does tell us that there are many more movies that failed the test!
+
+Let's count the two categories and get their average performance metrics.
+
+```{r}
+bechdel1 %>% 
+  group_by(binary) %>% 
+  summarise(count = n(),
+            avgdomgross = mean(domgross),
+            avgintgross = mean(intgross),
+            avgimbd = mean(imdb_rating),
+            avgmeta = mean(metascore))
+
+
+```
+
+Something is weird--it doesn't look like there are that many more movies that failed the test. Our plot, it seems, is misleading. The bars are stacking on top of each other.
+
+```{r}
+bechdel1 %>% 
+  ggplot() + 
+  geom_histogram(aes(intgross, fill = binary), position = "dodge") 
+
+```
+
+This is more accurate. 
+
+```{r}
+bechdel1 %>% 
+  ggplot() + 
+  geom_histogram(aes(intgross, fill = binary)) + 
+  facet_wrap(~binary)
+```
+
+This is more accurate and more readable! Looking at both the graphs, one could argue that movies that failed seem to do <i>slightly</i> better. But on the whole, it seems like there's really no significant difference.
+
+Let's revisit our summary statistics.
+
+```{r}
+bechdel1 %>% 
+  group_by(binary) %>% 
+  summarise(count = n(),
+            avgdomgross = mean(domgross),
+            avgintgross = mean(intgross),
+            avgimbd = mean(imdb_rating),
+            avgmeta = mean(metascore))
+
+
+```
+
+So it looks like there's not a huge difference, at least for the binary test.
+
+Let's use clean_test instead of binary and redo the same exercise. Will differences emerge?
+
+```{r}
+
+bechdel1 %>% 
+  group_by(clean_test) %>% 
+  summarise(count = n(),
+            avgdomgross = mean(domgross),
+            avgintgross = mean(intgross),
+            avgimbd = mean(imdb_rating),
+            avgmeta = mean(metascore))
+
+```
+
+Something interesting pops up! Movies that failed the test in the "notalk" category grossed significantly higher than those that passed the test. So movies that don't feature two women talking seem to do better!
+
+Let's see how the best movies fared in the test. 
+
+First, let's extract the top 30 performing movies using imdb_rating.
+
+```{r}
+bechdel_imdb <- bechdel1 %>% 
+  arrange(-imdb_rating) %>% 
+  head(50)
+```
+
+Now let's find out how they did in the test!
+
+```{r}
+bechdel_imdb %>% 
+  group_by(binary) %>% 
+  count()
+```
+
+So only 18% of the top 50 movies on IMDb (at least within this dataset) pass the Bechdel test!
+
+This is an important statistic. Let's do something cool with it!
+
+One of the many additional packages for ggplot2 is called ggwaffle. It makes fun waffle charts!
+
+```{r, eval=FALSE}
+
+# Install devtools only if you haven't already
+install.packages("devtools")
+devtools::install_github("liamgilbey/ggwaffle")
+
+```
+
+The ggwaffle package has a special way of doing things. We need to feed in the raw data to a function called waffle_iron(), which takes it and irons it out into a special tibble that can then be plotted by geom_waffle(). It also comes with theme_waffle(), a nice, neat theme!
+
+```{r}
+
+library(ggwaffle)
+
+waffle_data <- bechdel_imdb %>% 
+  waffle_iron(aes_d(group = binary))
+
+
+  ggplot(waffle_data, aes(x,y, fill = group)) + 
+  geom_waffle() +
+  coord_equal() + 
+  theme_waffle()
+
+```
+
+A good start! But we need to make a few adjustments. We can add a rows argument to waffle_iron to create a proper rectangle. To change the grouping, we need to fiddle once again with the type of data.
+
+
+```{r}
+library(ggwaffle)
+library(ggthemes)
+
+waffle_data <- bechdel_imdb %>% 
+  mutate(binary = as.character(binary)) %>% 
+  waffle_iron(aes_d(group = binary), rows = 5)
+
+
+  ggplot(waffle_data, aes(x,y, fill = group)) + 
+  geom_waffle() +
+  coord_equal() + 
+  scale_fill_manual(values = c("lightblue", "lightpink")) +  
+  theme_waffle() + 
+  labs(title = "The Bechdel Test in Movies",
+       subtitle = "How many of IMDb's top 50 movies pass the Bechdel Test?",
+       x = "", y = "",
+       caption = "Data obtained from the R tidytuesday project")
+    
+
+```
+
+Why don't we do something interesting and plot pass rates by year? 
+
+To do that, let's shape the data into what we want. For each year, we want the number of passes and the number of fails.
+
+```{r}
+bechdel1 %>% 
+  group_by(year, binary) %>% 
+  summarise(n = n())
+```
+
+And now we can plot lines by year and n, while splitting into separate lines based on binary.
+
+```{r}
+bechdel1 %>% 
+  group_by(year, binary) %>% 
+  summarise(n = n()) %>% 
+  ggplot() + 
+  geom_line(aes(year, n, col = binary))
+
+```
+
+It's clear, unfortunately, that the scope of this plot is limited--we just don't have enough data from previous years to be able to make a reasonable comparison. As it stands, it looks like the production of both types of movies seem to have increased at the same pace, barring a large spike in movies that failed around 2010. 
+
+Our lack of data doesn't necessarily disprove this trend, but we would ideally need more data from previous years to be able to get an authentic picture. 
+
+
+
+
+
